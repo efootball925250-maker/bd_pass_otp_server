@@ -16,14 +16,6 @@ const mailer = nodemailer.createTransport({
   }
 });
 
-async function sendSms(phone, code) {
-  const cleanPhone = phone.replace(/^\+?88/, "");
-  const msg = `Your BD Pass verification OTP is: ${code}`;
-  const url = `${process.env.SMS_API_URL}?api_key=${process.env.SMS_API_KEY}&type=text&number=88${cleanPhone}&senderid=${process.env.SMS_SENDER_ID}&message=${encodeURIComponent(msg)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("SMS gateway error");
-}
-
 async function sendEmailOtp(email, code) {
   await mailer.sendMail({
     from: `"BD Pass" <${process.env.GMAIL_USER}>`,
@@ -33,21 +25,26 @@ async function sendEmailOtp(email, code) {
   });
 }
 
+app.get("/", (req, res) => {
+  res.json({ ok: true, service: "BD Pass OTP Server (Gmail)" });
+});
+
 app.post("/send-otp", async (req, res) => {
   try {
     const contact = String(req.body.contact || "").trim();
-    if (!contact) return res.status(400).json({ ok: false, error: "Contact required" });
+    if (!contact) {
+      return res.status(400).json({ ok: false, error: "Gmail address required" });
+    }
+
+    if (!contact.includes("@")) {
+      return res.status(400).json({ ok: false, error: "Currently only Gmail OTP is supported" });
+    }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
     otpStore.set(contact.toLowerCase(), { code, expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    if (contact.includes("@")) {
-      await sendEmailOtp(contact, code);
-    } else {
-      await sendSms(contact, code);
-    }
-
-    res.json({ ok: true, message: "OTP sent" });
+    await sendEmailOtp(contact, code);
+    res.json({ ok: true, message: "OTP sent to Gmail" });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
